@@ -8,11 +8,11 @@
    ```
 
 2. Test the root endpoint:
-   - Open: `http://localhost:3002/`
+   - Open: `https://bfbackend-l9q7.onrender.com/`
    - Should return JSON with API info
 
 3. Test API endpoint:
-   - Open: `http://localhost:3002/api/get_user`
+   - Open: `https://bfbackend-l9q7.onrender.com/api/get_user`
    - Should return: `{"success":false,"message":"Not logged in"}`
 
 If you see these responses, the server is working correctly!
@@ -30,5 +30,5 @@ If you see these responses, the server is working correctly!
 
 ### CORS errors
 - Check that CORS headers are set in `index.php`
-- Verify frontend URL matches: `http://localhost:5173`
+- Verify frontend URL matches: `https://blog-flow-nu.vercel.app/`
 
