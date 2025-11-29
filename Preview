@@ -1,0 +1,58 @@
+<?php
+defined('PREVENT_DIRECT_ACCESS') OR exit('No direct script access allowed');
+
+/**
+ * Format datetime to Manila timezone (UTC +8)
+ * 
+ * @param string $datetime DateTime string from database
+ * @param string $format PHP date format (default: 'M j, Y g:i A')
+ * @return string Formatted date in Manila timezone
+ */
+function format_manila_datetime($datetime, $format = 'M j, Y g:i A')
+{
+    if (empty($datetime)) {
+        return '';
+    }
+
+    try {
+        $tz = new DateTimeZone('Asia/Manila');
+        $date = new DateTime($datetime, new DateTimeZone('UTC'));
+        $date->setTimezone($tz);
+        return $date->format($format);
+    } catch (Exception $e) {
+        return htmlspecialchars($datetime);
+    }
+}
+
+/**
+ * Display "time ago" format for Manila timezone
+ * 
+ * @param string $datetime DateTime string from database
+ * @return string Relative time (e.g., "2h ago", "Just now")
+ */
+function manila_time_ago($datetime)
+{
+    if (empty($datetime)) {
+        return '';
+    }
+
+    try {
+        $tz = new DateTimeZone('Asia/Manila');
+        $date = new DateTime($datetime, new DateTimeZone('UTC'));
+        $date->setTimezone($tz);
+        
+        $now = new DateTime('now', $tz);
+        $seconds = $now->getTimestamp() - $date->getTimestamp();
+
+        if ($seconds < 60) return 'Just now';
+        if ($seconds < 3600) return floor($seconds / 60) . 'm ago';
+        if ($seconds < 86400) return floor($seconds / 3600) . 'h ago';
+        if ($seconds < 604800) return floor($seconds / 86400) . 'd ago';
+        
+        return $date->format('M j, Y');
+    } catch (Exception $e) {
+        return htmlspecialchars($datetime);
+    }
+}
+
+?>

@@ -1,0 +1,17 @@
+# Allow access to uploaded files
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+</IfModule>
+
+# Allow all file types
+<FilesMatch "\.(jpg|jpeg|png|gif|webp|mp4|webm|ogg|mov|avi)$">
+    Order Allow,Deny
+    Allow from all
+</FilesMatch>
+
+# Prevent PHP execution in uploads directory
+<FilesMatch "\.php$">
+    Order Deny,Allow
+    Deny from all
+</FilesMatch>
+
