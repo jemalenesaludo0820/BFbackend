@@ -21,11 +21,11 @@ If you see these responses, the server is working correctly!
 
 ### "Not Found" error
 - Make sure you're using `server.php` as the router
-- Command should be: `php -S localhost:3002 server.php`
+- Command should be: `https://bfbackend-l9q7.onrender.com`
 - NOT: `php -S localhost:3002` (this won't work)
 
 ### Port already in use
-- Change port: `php -S localhost:3003 server.php`
+- Change port: `https://bfbackend-l9q7.onrender.com`
 - Update `frontend/vite.config.js` proxy target to match
 
 ### CORS errors

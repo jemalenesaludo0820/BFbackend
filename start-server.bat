@@ -1,5 +1,5 @@
 @echo off
-echo Starting LavaLust PHP Server on http://localhost:3002
+echo Starting LavaLust PHP Server on https://bfbackend-l9q7.onrender.com
 echo.
 echo Press Ctrl+C to stop the server
 echo.
