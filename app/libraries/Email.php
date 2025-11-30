@@ -17,21 +17,13 @@ class Email {
     private $emailContent = '';
     private $emailType = 'plain';
     private $last_error = '';
-
-    // SMTP Configuration - defaults (you can override globally or via properties)
+    
+    // SMTP Configuration - Set these values here
     private $SMTP_HOST   = 'smtp.gmail.com';
     private $SMTP_PORT   = 587;
-    private $SMTP_USER   = 'rochelleuchi38@gmail.com';
+    private $SMTP_USER   = 'rochelleuchi38@gmail.com';       
     private $SMTP_PASS   = 'bikb mgtg ojet mwgm';
-    private $SMTP_SECURE = 'tls';
-
-    // Resend configuration (provided)
-    private $RESEND_API_KEY = 're_52XVCM6M_FAiNudTj3tFxWxRyHwnZdqnV';
-    private $RESEND_FROM = 'LavaLust Cars <onboarding@resend.dev>';
-
-    // control flags
-    private $useResendOnly = false; // if true, skip PHPMailer and send directly via Resend
-    private $allowResendFallback = true; // if PHPMailer fails, try Resend automatically
+    private $SMTP_SECURE = 'tls';                        
 
     public function __construct()
     {
@@ -44,80 +36,44 @@ class Email {
                 require_once __DIR__ . '/PHPMailer/src/PHPMailer.php';
                 require_once __DIR__ . '/PHPMailer/src/SMTP.php';
             } else {
-                // Still allow creation of the class so Resend-only mode can work
-                // throw new \Exception('PHPMailer not found. Install via Composer or place PHPMailer in app/libraries/PHPMailer');
+                throw new \Exception('PHPMailer not found. Install via Composer or place PHPMailer in app/libraries/PHPMailer');
             }
         }
 
-        // Only instantiate PHPMailer if class exists
-        if (class_exists('PHPMailer\PHPMailer\PHPMailer')) {
-            $this->mailer = new PHPMailer(true);
-        } else {
-            $this->mailer = null;
-        }
+        $this->mailer = new PHPMailer(true);
 
         // Try to get SMTP settings from globals first (for backward compatibility)
         global $SMTP_HOST, $SMTP_PORT, $SMTP_USER, $SMTP_PASS, $SMTP_SECURE;
-
+        
+        // Use global values if they exist, otherwise use class properties
         $smtp_host = !empty($SMTP_HOST) ? $SMTP_HOST : $this->SMTP_HOST;
         $smtp_port = !empty($SMTP_PORT) ? $SMTP_PORT : $this->SMTP_PORT;
         $smtp_user = !empty($SMTP_USER) ? $SMTP_USER : $this->SMTP_USER;
         $smtp_pass = !empty($SMTP_PASS) ? $SMTP_PASS : $this->SMTP_PASS;
         $smtp_secure = !empty($SMTP_SECURE) ? $SMTP_SECURE : $this->SMTP_SECURE;
 
-        // Configure PHPMailer SMTP if available and host provided
-        if ($this->mailer && !empty($smtp_host)) {
-            try {
-                $this->mailer->isSMTP();
-                $this->mailer->Host       = $smtp_host;
-                $this->mailer->Port       = $smtp_port ?: 587;
-                $this->mailer->SMTPAuth   = true;
-                $this->mailer->Username   = $smtp_user;
-                $this->mailer->Password   = $smtp_pass;
-                if (!empty($smtp_secure)) {
-                    $this->mailer->SMTPSecure = $smtp_secure === 'ssl' ? PHPMailer::ENCRYPTION_SMTPS : PHPMailer::ENCRYPTION_STARTTLS;
-                }
-                $this->mailer->SMTPAutoTLS = true;
-                // $this->mailer->SMTPDebug = 0;
-            } catch (\Exception $e) {
-                // If PHPMailer initialization fails, we'll rely on Resend fallback later
-                $this->mailer = null;
-                $this->last_error = "PHPMailer init failed: " . $e->getMessage();
+        // Always configure SMTP if we have a host
+        if (!empty($smtp_host)) {
+            $this->mailer->isSMTP();
+            $this->mailer->Host       = $smtp_host;
+            $this->mailer->Port       = $smtp_port ?: 587;
+            $this->mailer->SMTPAuth   = true;
+            $this->mailer->Username   = $smtp_user;
+            $this->mailer->Password   = $smtp_pass;
+            if (!empty($smtp_secure)) {
+                $this->mailer->SMTPSecure = $smtp_secure === 'ssl' ? PHPMailer::ENCRYPTION_SMTPS : PHPMailer::ENCRYPTION_STARTTLS;
             }
+            $this->mailer->SMTPAutoTLS = true;
+            // Enable verbose debug output (can be disabled in production)
+            // $this->mailer->SMTPDebug = 2; // Uncomment for debugging
+        } else {
+            // If no SMTP host is configured, this will fail
+            // So we'll throw an error instead of using mail()
+            throw new \Exception('SMTP configuration is missing. Please configure SMTP settings in Email.php');
         }
 
-        $this->last_error = '';
+        $this->mailer->CharSet = (function_exists('config_item') ? config_item('charset') : null) ?: 'UTF-8';
     }
-
-    /* ---------- Public configuration helpers ---------- */
-
-    /**
-     * Force sending only through Resend (skip PHPMailer)
-     * @param bool $bool
-     */
-    public function useResendOnly($bool = true)
-    {
-        $this->useResendOnly = (bool)$bool;
-    }
-
-    /**
-     * Enable/disable automatic fallback to Resend when PHPMailer fails.
-     * @param bool $bool
-     */
-    public function allowResendFallback($bool = true)
-    {
-        $this->allowResendFallback = (bool)$bool;
-    }
-
-    /**
-     * Override Resend API Key (optional)
-     */
-    public function setResendApiKey($key)
-    {
-        $this->RESEND_API_KEY = $key;
-    }
-
-    /* ---------- Original API preserved ---------- */
 
     private function valid_email($email)
     {
@@ -198,36 +154,27 @@ class Email {
         }
     }
 
-    /* ---------- Sending logic with automatic fallback A2 ---------- */
-
     public function send()
     {
-        // Reset previous error
+        // Reset error
         $this->last_error = '';
-
+        
         if (!is_array($this->recipients) || count($this->recipients) < 1) {
             $this->last_error = 'No recipient email address specified';
             return false;
         }
 
+        // Validate subject
         if (empty($this->subject)) {
             $this->last_error = 'Email subject is empty';
             return false;
         }
 
-        // If explicitly set to Resend-only, skip PHPMailer and go to Resend
-        if ($this->useResendOnly || !$this->mailer) {
-            $sent = $this->sendViaResend();
-            return $sent;
-        }
-
-        // Otherwise, try PHPMailer first
         try {
-            // Set sender
             if (!empty($this->sender)) {
                 $this->mailer->setFrom($this->sender, $this->sender_name ?: null);
             } else {
-                // Use SMTP user if no sender specified
+                // Use class property for SMTP user
                 if (!empty($this->SMTP_USER)) {
                     $this->mailer->setFrom($this->SMTP_USER);
                 } else {
@@ -240,16 +187,11 @@ class Email {
                 $this->mailer->addReplyTo($this->reply_to);
             }
 
-            // Clear recipients/attachments from prior usage just in case
-            $this->mailer->clearAddresses();
-            $this->mailer->clearAttachments();
-
             foreach ($this->recipients as $r) {
                 $this->mailer->addAddress($r);
             }
 
             $this->mailer->Subject = $this->subject;
-
             if ($this->emailType === 'html') {
                 $this->mailer->isHTML(true);
                 $this->mailer->Body = $this->emailContent;
@@ -266,108 +208,17 @@ class Email {
             }
 
             $result = $this->mailer->send();
-
-            if ($result) {
-                return true;
-            } else {
-                // PHPMailer returned false without throwing
-                $this->last_error = $this->mailer->ErrorInfo ?: 'Unknown PHPMailer error';
-                // If allowed, attempt Resend fallback
-                if ($this->allowResendFallback) {
-                    error_log("PHPMailer failed: {$this->last_error}. Attempting Resend fallback...");
-                    return $this->sendViaResend();
-                }
-                return false;
+            if (!$result) {
+                $this->last_error = $this->mailer->ErrorInfo ?: 'Unknown error occurred while sending email';
             }
-
+            return $result;
         } catch (PHPMailerException $e) {
-            $this->last_error = $e->getMessage() . ' (PHPMailer Exception)';
-            if ($this->allowResendFallback) {
-                error_log("PHPMailer exception: {$this->last_error}. Attempting Resend fallback...");
-                return $this->sendViaResend();
-            }
+            $this->last_error = $e->getMessage() . ' (PHPMailer Error)';
             return false;
         } catch (\Exception $e) {
-            $this->last_error = $e->getMessage() . ' (General Exception)';
-            if ($this->allowResendFallback) {
-                error_log("PHPMailer exception: {$this->last_error}. Attempting Resend fallback...");
-                return $this->sendViaResend();
-            }
+            $this->last_error = $e->getMessage() . ' (General Error)';
             return false;
         }
-    }
-
-    /* ---------- Private helper: send with Resend API (cURL) ---------- */
-
-    private function sendViaResend()
-    {
-        // Validate resend configuration
-        if (empty($this->RESEND_API_KEY)) {
-            $this->last_error = 'Missing Resend API key';
-            return false;
-        }
-
-        // Prepare from
-        $sendFrom = !empty($this->sender) ? ($this->sender_name ? "{$this->sender_name} <{$this->sender}>" : $this->sender) : $this->RESEND_FROM;
-
-        // Build payload
-        $payload = [
-            "from"    => $sendFrom,
-            // Resend supports string or array for "to"
-            "to"      => array_values($this->recipients),
-            "subject" => $this->subject,
-            "html"    => ($this->emailType === 'html') ? $this->emailContent : nl2br($this->emailContent)
-        ];
-
-        // NOTE: attachments are not sent via this simple Resend payload.
-        if (!empty($this->attach_files)) {
-            // Log that attachments can't be forwarded by this Resend implementation
-            error_log("Attachments detected but will NOT be sent via Resend fallback. Files: " . implode(', ', $this->attach_files));
-        }
-
-        $curl = curl_init();
-
-        curl_setopt_array($curl, [
-            CURLOPT_URL            => "https://api.resend.com/emails",
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_POST           => true,
-            CURLOPT_HTTPHEADER     => [
-                "Authorization: Bearer {$this->RESEND_API_KEY}",
-                "Content-Type: application/json"
-            ],
-            CURLOPT_POSTFIELDS     => json_encode($payload),
-            CURLOPT_TIMEOUT        => 15
-        ]);
-
-        $response = curl_exec($curl);
-        $curlError = curl_error($curl);
-        $httpStatus = curl_getinfo($curl, CURLINFO_HTTP_CODE);
-
-        curl_close($curl);
-
-        if ($curlError) {
-            $this->last_error = "cURL Error: $curlError";
-            return false;
-        }
-
-        $decoded = json_decode($response, true);
-        if ($httpStatus >= 400) {
-            // Try to capture message from response
-            $msg = isset($decoded['error']['message']) ? $decoded['error']['message'] : ($decoded['message'] ?? $response);
-            $this->last_error = "Resend API error (HTTP $httpStatus): $msg";
-            return false;
-        }
-
-        // If response includes an 'id' or similar, consider success
-        if (is_array($decoded) && (isset($decoded['id']) || isset($decoded['message']) || $httpStatus < 400)) {
-            return true;
-        }
-
-        // Unknown response format, but treat as success if HTTP < 400
-        if ($httpStatus < 400) return true;
-
-        $this->last_error = "Unknown Resend response: " . $response;
-        return false;
     }
 
     /**
@@ -381,4 +232,5 @@ class Email {
 } // class Email
 
 } // if !class_exists
+
 ?>

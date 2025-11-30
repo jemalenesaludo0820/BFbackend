@@ -284,101 +284,127 @@ protected $allowedFonts = [
     }
    }
    
-    public function register()
+ public function register()
 {
-header('Content-Type: application/json');
+    header('Content-Type: application/json');
+    
+    $this->call->model('UsersModel'); 
+    $this->call->library('session');
 
+    if ($this->io->method() == 'post') {
+        $username = $this->io->post('username');
+        $email = $this->io->post('email');
+        $password = password_hash($this->io->post('password'), PASSWORD_BCRYPT);
+        $role = $this->io->post('role');
 
-$this->call->model('UsersModel');  
-$this->call->library('session');  
+        // Check if username or email already exists
+        $usernameUnique = $this->UsersModel->is_username_unique($username);
+        $emailExists = $this->UsersModel->is_email_exists($email);
+        
+        if (!$usernameUnique) {
+            echo json_encode([
+                'success' => false,
+                'message' => 'Username already exists.'
+            ]);
+            return;
+        }
+        if ($emailExists) {
+            echo json_encode([
+                'success' => false,
+                'message' => 'Email already registered.'
+            ]);
+            return;
+        }
 
-if ($this->io->method() !== 'post') {  
-    echo json_encode([  
-        'success' => false,  
-        'message' => 'Invalid request method'  
-    ]);  
-    return;  
-}  
+        // Generate code and insert
+        $verification_code = rand(100000, 999999);
+        $data = [
+            'username' => $username,
+            'email' => $email,
+            'password' => $password,
+            'role' => $role,
+            'verification_code' => $verification_code,
+            'is_verified' => 0,
+            'created_at' => current_manila_datetime()
+        ];
 
-$username = $this->io->post('username');  
-$email = $this->io->post('email');  
-$password = password_hash($this->io->post('password'), PASSWORD_BCRYPT);  
-$role = $this->io->post('role');  
+        if ($this->UsersModel->insert($data)) {
+            // Send verification email
+            $this->call->library('email');
+            
+            $email_instance = null;
+            if (isset($this->email) && is_object($this->email)) {
+                $email_instance = $this->email;
+            } else {
+                $LAVA =& lava_instance();
+                if (isset($LAVA->properties['email']) && is_object($LAVA->properties['email'])) {
+                    $email_instance = $LAVA->properties['email'];
+                }
+            }
+            
+            if (!$email_instance) {
+                echo json_encode([
+                    'success' => false,
+                    'message' => 'Email library failed to load. Please contact support.'
+                ]);
+                return;
+            }
+            
+            $email_instance->sender('rochelleuchi38@gmail.com', 'Blogflow');
+            
+            if (!$email_instance->recipient($email)) {
+                $email_error = $email_instance->get_error();
+                echo json_encode([
+                    'success' => false,
+                    'message' => 'Invalid email address: ' . htmlspecialchars($email_error)
+                ]);
+                return;
+            }
+            
+            $email_instance->subject('Verify your Blogflow account');
+            
+            $htmlContent = "<h2>Hello " . htmlspecialchars($username) . ",</h2>";
+            $htmlContent .= "<p>Your verification code is:</p>";
+            $htmlContent .= "<h3 style='color:#014421;'>{$verification_code}</h3>";
+            $htmlContent .= "<p>Please enter this code to verify your account.</p>";
+            
+            $email_instance->email_content($htmlContent, 'html');
+            
+            $email_sent = $email_instance->send();
+            
+            if ($email_sent) {
+                $_SESSION['pending_email'] = $email;
+                
+                echo json_encode([
+                    'success' => true,
+                    'message' => 'Registration successful! Please check your email for verification code.',
+                    'redirect' => '/login'
+                ]);
+                return;
+            } else {
+                $email_error = $email_instance->get_error();
+                error_log("Email sending failed for user: {$email}. Error: " . $email_error);
+                
+                echo json_encode([
+                    'success' => false,
+                    'message' => 'Registration successful, but we could not send the verification email. Error: ' . htmlspecialchars($email_error)
+                ]);
+                return;
+            }
+        } else {
+            echo json_encode([
+                'success' => false,
+                'message' => 'Registration failed. Try again.'
+            ]);
+            return;
+        }
+    }
 
-// Check if username or email already exists  
-if (!$this->UsersModel->is_username_unique($username)) {  
-    echo json_encode([  
-        'success' => false,  
-        'message' => 'Username already exists.'  
-    ]);  
-    return;  
-}  
-
-if ($this->UsersModel->is_email_exists($email)) {  
-    echo json_encode([  
-        'success' => false,  
-        'message' => 'Email already registered.'  
-    ]);  
-    return;  
-}  
-
-// Generate verification code  
-$verification_code = rand(100000, 999999);  
-
-$data = [  
-    'username' => $username,  
-    'email' => $email,  
-    'password' => $password,  
-    'role' => $role,  
-    'verification_code' => $verification_code,  
-    'is_verified' => 0,  
-    'created_at' => current_manila_datetime()  
-];  
-
-if (!$this->UsersModel->insert($data)) {  
-    echo json_encode([  
-        'success' => false,  
-        'message' => 'Registration failed. Try again.'  
-    ]);  
-    return;  
-}  
-
-// --- Send verification email using EmailResend ---  
-$this->call->library('EmailResend');  
-$email_instance = new EmailResend('re_52XVCM6M_FAiNudTj3tFxWxRyHwnZdqnV');  
-
-$email_instance->from('rochelleuchi38@gmail.com', 'Blogflow');  
-$email_instance->to($email);  
-$email_instance->subject('Verify your Blogflow account');  
-
-$htmlContent = "<h2>Hello " . htmlspecialchars($username) . ",</h2>";  
-$htmlContent .= "<p>Your verification code is:</p>";  
-$htmlContent .= "<h3 style='color:#014421;'>{$verification_code}</h3>";  
-$htmlContent .= "<p>Please enter this code to verify your account.</p>";  
-
-$email_instance->html($htmlContent);  
-
-if (!$email_instance->send()) {  
-    $email_error = $email_instance->get_error();  
-    error_log("Email send failed for {$email}: " . $email_error);  
-
-    echo json_encode([  
-        'success' => false,  
-        'message' => 'Registration succeeded, but we could not send the verification email. Error: ' . htmlspecialchars($email_error)  
-    ]);  
-    return;  
-}  
-
-// Email sent successfully  
-$_SESSION['pending_email'] = $email;  
-
-echo json_encode([  
-    'success' => true,  
-    'message' => 'Registration successful! Please check your email for verification code.',  
-    'redirect' => '/login'  
-]);  
-
-
+    // GET request
+    echo json_encode([
+        'success' => false,
+        'message' => 'Invalid request method'
+    ]);
 }
 
 
@@ -399,58 +425,24 @@ public function verify()
 
 public function verify_code()
 {
-$this->ensureSession();
+    $this->ensureSession();
 
+    if ($this->io->method() == 'post') {
+        $code = trim($this->io->post('code'));
+        $email = $_SESSION['pending_email'] ?? null;
+        $result = $this->attemptVerification($code, $email);
 
-if ($this->io->method() !== 'post') {  
-    redirect('/auth/verify');  
-    exit;  
-}  
-
-$code = trim($this->io->post('code'));  
-$email = $_SESSION['pending_email'] ?? null;  
-
-if (!$email) {  
-    redirect('/auth/register');  
-    exit;  
-}  
-
-// Get user by email  
-$user = $this->UsersModel->get_by_email($email);  
-
-if (!$user) {  
-    $data['error'] = 'User not found.';  
-    $this->call->view('/auth/verify', $data);  
-    return;  
-}  
-
-if ($user['is_verified'] == 1) {  
-    unset($_SESSION['pending_email']);  
-    redirect('/auth/login');  
-    return;  
-}  
-
-if ($user['verification_code'] != $code) {  
-    $data['error'] = 'Invalid verification code.';  
-    $this->call->view('/auth/verify', $data);  
-    return;  
-}  
-
-// Correct code → verify account  
-$this->UsersModel->update($user['id'], [  
-    'is_verified' => 1,  
-    'verification_code' => null, // clear code  
-    'verified_at' => current_manila_datetime()  
-]);  
-
-unset($_SESSION['pending_email']);  
-
-$this->jsonResponse(true, 'Account verified successfully!', [  
-    'redirect' => '/login'  
-]);  
-
-
+        if ($result['success']) {
+            redirect('/auth/login');
+        } else {
+            $data['error'] = $result['message'];
+            $this->call->view('/auth/verify', $data);
+        }
+    } else {
+        redirect('/auth/verify');
+    }
 }
+
 
 public function api_pending_email()
 {
