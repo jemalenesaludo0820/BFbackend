@@ -350,8 +350,7 @@ protected $allowedFonts = [
                 return;
             }
             
-            $email_instance->sender('rochelleuchi38@gmail.com', 'Blogflow');
-            
+$email_instance->sender('no-reply@blog-flow-nu.vercel.app', 'Blogflow');            
             if (!$email_instance->recipient($email)) {
                 $email_error = $email_instance->get_error();
                 echo json_encode([

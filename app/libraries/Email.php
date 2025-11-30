@@ -21,8 +21,8 @@ class Email {
     // SMTP Configuration - Set these values here
     private $SMTP_HOST   = 'smtp.gmail.com';
     private $SMTP_PORT   = 587;
-    private $SMTP_USER   = 'rochelleuchi38@gmail.com';       
-    private $SMTP_PASS   = 'bikb mgtg ojet mwgm';
+    private $SMTP_USER   = '9ce84c001@smtp-brevo.com';       
+    private $SMTP_PASS   = 'OTvgV20f4xwK6G1E';
     private $SMTP_SECURE = 'tls';                        
 
     public function __construct()
