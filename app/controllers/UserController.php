@@ -350,24 +350,26 @@ protected $allowedFonts = [
                 return;
             }
             
-$email_instance->sender('blog-flow-nu.vercel.app', 'Blogflow');            
-            if (!$email_instance->recipient($email)) {
-                $email_error = $email_instance->get_error();
-                echo json_encode([
-                    'success' => false,
-                    'message' => 'Invalid email address: ' . htmlspecialchars($email_error)
-                ]);
-                return;
-            }
-            
-            $email_instance->subject('Verify your Blogflow account');
-            
+           $email_instance->from('rochelleuchi38@gmail.com', 'Blogflow');
+
+if (!$email_instance->to($email)) {
+    $email_error = $email_instance->get_error();
+    echo json_encode([
+        'success' => false,
+        'message' => 'Invalid email address: ' . htmlspecialchars($email_error)
+    ]);
+    return;
+}
+
+$email_instance->subject('Verify your Blogflow account');
+$email_instance->html($htmlContent);
+
             $htmlContent = "<h2>Hello " . htmlspecialchars($username) . ",</h2>";
             $htmlContent .= "<p>Your verification code is:</p>";
             $htmlContent .= "<h3 style='color:#014421;'>{$verification_code}</h3>";
             $htmlContent .= "<p>Please enter this code to verify your account.</p>";
             
-            $email_instance->email_content($htmlContent, 'html');
+        $email_instance->html($htmlContent);
             
             $email_sent = $email_instance->send();
             
